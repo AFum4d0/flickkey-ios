@@ -27,7 +27,9 @@ jobs:
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
-      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
         with:
           xcode-version: latest-stable
       - uses: actions/setup-python@v5
@@ -35,7 +37,8 @@ jobs:
           python-version: "3.10"
       - name: Build CLI with Zenzai
         run: |
-          git clone -q --depth 1 --branch "$AZK_VERSION" https://github.com/azooKey/AzooKeyKanaKanjiConverter azk
+          set -o pipefail
+          git clone -q --depth 1 --branch "$AZK_VERSION" --recurse-submodules --shallow-submodules             https://github.com/azooKey/AzooKeyKanaKanjiConverter azk
           cd azk && swift build -c release --traits Zenzai 2>&1 | tail -5
       - name: Download Wikipedia
         run: |
@@ -49,7 +52,10 @@ jobs:
             | head -n "${{ inputs.chunks }}" > chunks.txt
           cat chunks.txt
           mkdir -p wiki
-          while read -r f; do curl -fsSL -A "flickkey-ios-build" "$BASE/$f" -o "wiki/$f"; done < chunks.txt
+          MIRROR=https://ftp.acc.umu.se/mirror/wikimedia.org/dumps/jawiki/latest
+          while read -r f; do
+            curl -fsSL -A "flickkey-ios-build" --retry 5 --retry-all-errors -C - "$BASE/$f" -o "wiki/$f"               || curl -fsSL --retry 5 --retry-all-errors "$MIRROR/$f" -o "wiki/$f"
+          done < chunks.txt
           du -sh wiki
       - name: Make corpus
         run: |

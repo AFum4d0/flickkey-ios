@@ -5,7 +5,7 @@ import PackageDescription
 let package = Package(
     name: "Engine",
     platforms: [.iOS(.v16)],
-    products: [.library(name: "Engine", targets: ["Engine"])],
+    products: [.library(name: "Engine", type: .dynamic, targets: ["Engine"])],
     dependencies: [
         .package(url: "https://github.com/azooKey/AzooKeyKanaKanjiConverter", exact: "0.11.2", traits: ["Zenzai"]),
     ],

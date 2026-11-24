@@ -20,6 +20,8 @@ jobs:
     timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Clone converter
         run: |
           git clone -q --depth 1 --branch "$AZK_VERSION" --recurse-submodules --shallow-submodules \
