@@ -4,7 +4,7 @@ import sys
 
 name, path = sys.argv[1], sys.argv[2]
 data = json.load(open(path, encoding="utf-8"))
-items = data["result"] if isinstance(data, dict) and "result" in data else data
+items = data["items"]
 def rate(xs, k):
     return sum(1 for x in xs if 0 <= x["max_rank"] < k) / max(len(xs), 1)
 ctx = [x for x in items if x.get("left_context")]

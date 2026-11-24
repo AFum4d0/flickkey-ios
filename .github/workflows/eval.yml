@@ -27,7 +27,9 @@ jobs:
           set -o pipefail
           git clone -q --depth 1 --branch "$AZK_VERSION" --recurse-submodules --shallow-submodules \
             https://github.com/azooKey/AzooKeyKanaKanjiConverter azk
-          cd azk && swift build -c release --traits Zenzai 2>&1 | tail -3
+          # evaluate は Zenzai に v2 の形式で文脈を渡すが、使うモデル（zenz-v3.2）は v3 なので合わせる
+          cd azk && sed -i '' 's/versionDependentMode: .v2(.init(leftSideContext:/versionDependentMode: .v3(.init(leftSideContext:/'             Sources/CliTool/Subcommands/EvaluateCommand.swift && grep -c ".v3(.init(leftSideContext:" Sources/CliTool/Subcommands/EvaluateCommand.swift
+          swift build -c release --traits Zenzai 2>&1 | tail -3
       - name: Get benchmark and models
         env:
           GH_TOKEN: ${{ github.token }}
@@ -59,6 +61,7 @@ jobs:
           cat scores.md >> "$GITHUB_STEP_SUMMARY"
           cat scores.md
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: eval-results
           path: |
