@@ -44,7 +44,13 @@ jobs:
             CODE_SIGNING_ALLOWED=NO | xcbeautify --renderer github-actions
       - name: Export screenshots
         if: always()
-        run: xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots || true
+        run: |
+          xcrun xcresulttool export attachments --path TestResults.xcresult --output-path screenshots || true
+          # アプリが落ちたときの手がかり
+          mkdir -p screenshots/crash
+          xcrun xcresulttool export diagnostics --path TestResults.xcresult --output-path screenshots/crash/diagnostics || true
+          cp ~/Library/Logs/DiagnosticReports/FlickKey* screenshots/crash/ 2>/dev/null || true
+          ls screenshots/crash
       - uses: actions/upload-artifact@v4
         if: always()
         with:
