@@ -8,7 +8,14 @@ Android 版 Gboard のような操作の iPhone 用日本語キーボードで�
 - 英字：QWERTY。シフトは 1 文字だけ大文字になります。
 - 数字：テンキー。フリックで記号も入ります。
 - 変換：入力中は候補が上に並びます。空白キー（変換）を押すと次の候補に進み、改行キー（確定）で確定します。
-- カーソル：◀ ▶ で動かします。空白キーを左右になぞっても動きます。入力中に動かすと、カーソルより前の部分だけを変換します。
+- カーソル：◀ ▶ か、空白キーを左右になぞって動かします。入力中に動かすと、カーソルより前の部分だけを変換します。
+- もしかして：入力中の文字のどこかを打ち間違えた（同じキーの別の方向や、となりのキーを押した）とみられるとき、直した変換を候補の列の先頭に出します。明らかな誤字なら候補の 1 番目に入るので、変換キー 1 回で直ります。
+- 次の語：確定した直後に、次に来そうな語を候補の列に出します。
+- Zenzai：カーソルより前の文を見て変換を選ぶ、小さな言語モデル（zenz-v3.2-xsmall）を使います。
+
+## 辞書
+
+azooKey の辞書（約 57 万語）に、mozc-ut の 6 つの辞書から約 236 万語を足して、約 288 万語にしています。作り直しは `dictionary` ワークフロー（`dict/`）で行い、できた辞書は Release「dictionary」に置きます。アプリのビルドは、そこから辞書を取ってくる作りです。
 
 ## 開発の流れ（Mac なし）
 
@@ -46,3 +53,20 @@ UI テストで撮った画面は、実行結果の Artifacts にある `screens
 - 削除キーをなぞってまとめて消す操作
 - 打鍵時の振動と音（「フルアクセスを許可」が必要になるため）
 - 設定画面（キーの高さ・テーマなど）
+
+## 使っているデータとライセンス
+
+| データ | ライセンス |
+|---|---|
+| [AzooKeyKanaKanjiConverter](https://github.com/azooKey/AzooKeyKanaKanjiConverter) とその辞書 | MIT |
+| [mozcdic-ut-jawiki](https://github.com/utuhiro78/mozcdic-ut-jawiki)（Wikipedia の見出し語） | CC BY-SA |
+| [mozcdic-ut-neologd](https://github.com/utuhiro78/mozcdic-ut-neologd) | Apache 2.0 |
+| [mozcdic-ut-sudachidict](https://github.com/utuhiro78/mozcdic-ut-sudachidict) | Apache 2.0 |
+| [mozcdic-ut-personal-names](https://github.com/utuhiro78/mozcdic-ut-personal-names) | Apache 2.0 |
+| [mozcdic-ut-place-names](https://github.com/utuhiro78/mozcdic-ut-place-names)（日本郵便の郵便番号データ） | パブリックドメイン |
+| [mozcdic-ut-edict2](https://github.com/utuhiro78/mozcdic-ut-edict2) | CC BY-SA 4.0 |
+| [zenz-v3.2-xsmall](https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf) | CC BY-SA 4.0 |
+| [AJIMEE-Bench](https://github.com/azooKey/AJIMEE-Bench)（評価だけに使う） | CC BY-SA 3.0 |
+| 日本語版 Wikipedia の本文（n-gram の材料） | CC BY-SA 4.0 |
+
+辞書とモデルは CC BY-SA を含むので、配るときはこの表のように出どころを示します。

@@ -8,6 +8,8 @@ enum Theme {
     static let pressed = dynamic(0xB4BAC2, 0x55595F)
     static let accent = dynamic(0x2F7D6D, 0x4DB39B)
     static let popup = dynamic(0xFFFFFF, 0x4A4E54)
+    /// キーの下の影。背景と同じ青みの灰色にする（真っ黒の影は浮いて見える）
+    static let keyShadow = dynamic(0x8A929C, 0x000000)
 
     static let keyHeight: CGFloat = 50
     static let gap: CGFloat = 6
@@ -128,8 +130,8 @@ struct TwelveKeyPad: View {
     private func pad(unit: CGFloat) -> some View {
         HStack(spacing: Theme.gap) {
             VStack(spacing: Theme.gap) {
-                FunctionKey(symbol: "arrow.uturn.backward", label: "戻す", id: "reverse") { engine.reverseToggle() }
-                RepeatKey(symbol: "arrowtriangle.left.fill", label: "左へ", id: "left") { engine.moveCursor(-1) }
+                FunctionKey(symbol: "arrow.uturn.backward", label: "前の文字に戻す", id: "reverse") { engine.reverseToggle() }
+                RepeatKey(symbol: "arrowtriangle.left.fill", label: "カーソルを左へ", id: "left") { engine.moveCursor(-1) }
                 if let onGlobe {
                     FunctionKey(symbol: "globe", label: "次のキーボード", id: "globe", action: onGlobe)
                 }
@@ -160,7 +162,7 @@ struct TwelveKeyPad: View {
 
             VStack(spacing: Theme.gap) {
                 RepeatKey(symbol: "delete.left", label: "削除", id: "backspace") { engine.backspace() }
-                RepeatKey(symbol: "arrowtriangle.right.fill", label: "右へ", id: "right") { engine.moveCursor(1) }
+                RepeatKey(symbol: "arrowtriangle.right.fill", label: "カーソルを右へ", id: "right") { engine.moveCursor(1) }
                 SpaceKey(engine: engine, title: engine.isComposing ? "変換" : "空白")
                 EnterKey(engine: engine)
             }
@@ -180,13 +182,14 @@ struct FlickKeyView: View {
     var body: some View {
         let active = pressed == key
         VStack(spacing: 0) {
-            Text(key.face).font(.system(size: key.face.count > 2 ? 17 : 22))
+            Text(key.face).font(.system(size: key.face.count > 2 ? 17 : 22, weight: .medium))
             if showHints {
                 Text(key.chars.dropFirst().joined()).font(.system(size: 10)).foregroundStyle(.secondary)
             }
         }
         .frame(maxWidth: .infinity, minHeight: Theme.keyHeight, maxHeight: Theme.keyHeight)
         .background(active ? Theme.pressed : Theme.key, in: RoundedRectangle(cornerRadius: 8))
+        .shadow(color: Theme.keyShadow.opacity(0.45), radius: 0, y: 1)
         .overlay {
             if active {
                 GeometryReader { g in FlickGuide(key: key, direction: direction, cell: g.size) }
@@ -265,7 +268,7 @@ struct QwertyPad: View {
                 if let onGlobe {
                     FunctionKey(symbol: "globe", label: "次のキーボード", id: "globe", action: onGlobe).frame(width: 44)
                 }
-                SpaceKey(engine: engine, title: "space")
+                SpaceKey(engine: engine, title: "")  // 横長の形で空白キーと分かる。読み上げは「空白」
                 LetterKey(text: ".", engine: engine).frame(width: 40)
                 EnterKey(engine: engine).frame(width: 72)
             }
@@ -289,6 +292,7 @@ struct LetterKey: View {
             .font(.system(size: 22))
             .frame(maxWidth: .infinity, minHeight: Theme.keyHeight, maxHeight: Theme.keyHeight)
             .background(down ? Theme.pressed : Theme.key, in: RoundedRectangle(cornerRadius: 6))
+            .shadow(color: Theme.keyShadow.opacity(0.45), radius: 0, y: 1)
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 0).updating($down) { _, s, _ in s = true }
                 .onEnded { _ in engine.letter(text.lowercased()) })
@@ -340,6 +344,7 @@ struct KeyFace: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .frame(minHeight: Theme.keyHeight)
         .background(fill, in: RoundedRectangle(cornerRadius: 8))
+        .shadow(color: Theme.keyShadow.opacity(0.45), radius: 0, y: 1)
         .contentShape(Rectangle())
     }
 }
@@ -412,7 +417,7 @@ struct SpaceKey: View {
                     }
             )
             .accessibilityElement()
-            .accessibilityLabel(title)
+            .accessibilityLabel(title.isEmpty ? "空白" : title)
             .accessibilityIdentifier("space")
             .accessibilityAddTraits(.isButton)
             .accessibilityAction { engine.space() }

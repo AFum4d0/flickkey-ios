@@ -61,12 +61,14 @@ struct ContentView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("フリックキー").font(.largeTitle.bold())
-            Label("設定 → 一般 → キーボード → キーボード → 新しいキーボードを追加", systemImage: "keyboard")
-                .font(.subheadline)
-            Button("設定を開く") {
-                if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+            // 「設定を開く」で出るのはこのアプリ自身の設定画面。そこから先の道順だけを書く
+            step(1) {
+                Button("設定を開く") {
+                    if let url = URL(string: UIApplication.openSettingsURLString) { UIApplication.shared.open(url) }
+                }
+                .buttonStyle(.borderedProminent)
             }
-            .buttonStyle(.borderedProminent)
+            step(2) { Text("「キーボード」で「フリックキー」をオンにする") }
 
             Text(demo.display)
                 .font(.title3)
@@ -81,6 +83,19 @@ struct ContentView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             KeyboardView(engine: engine)
         }
+        .tint(Theme.accent)
         .onAppear { engine.output = demo }
+    }
+
+    private func step(_ n: Int, @ViewBuilder _ content: () -> some View) -> some View {
+        HStack(spacing: 12) {
+            Text("\(n)")
+                .font(.subheadline.weight(.semibold).monospacedDigit())
+                .foregroundStyle(.white)
+                .frame(width: 26, height: 26)
+                .background(Theme.accent, in: Circle())
+                .accessibilityHidden(true)
+            content()
+        }
     }
 }
