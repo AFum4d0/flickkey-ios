@@ -195,8 +195,7 @@ final class InputEngine: ObservableObject {
     func updateAutoShift() {
         guard autoCapitalize, mode == .qwerty, !capsLock, let c = output?.contextBefore else { return }
         let t = c.replacingOccurrences(of: " ", with: "")
-        shift = t.isEmpty || t.hasSuffix(".") || t.hasSuffix("!") || t.hasSuffix("?") || t.hasSuffix("
-")
+        shift = t.isEmpty || t.hasSuffix(".") || t.hasSuffix("!") || t.hasSuffix("?") || t.hasSuffix("\n")
     }
 
     func space() {
