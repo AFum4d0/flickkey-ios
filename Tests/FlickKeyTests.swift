@@ -14,6 +14,7 @@ final class FlickKeyTests: XCTestCase {
         engine.output = out
         engine.now = { [unowned self] in self.clock }
         engine.useZenzai = false  // 辞書だけの変換で決まった結果を確かめる。Zenzai は testZenzai で見る
+        engine.typoCheckDelay = nil
     }
 
     private func key(_ label: String, in rows: [[FlickKey?]] = Layouts.kana) -> FlickKey {
@@ -61,7 +62,7 @@ final class FlickKeyTests: XCTestCase {
         type("きしゃがきしゃできしゃした")
         let top = engine.candidates.prefix(3).map(\.text)
         print("zenzai:", top)
-        XCTAssertTrue(top.contains("記者が汽車で帰社した"), "\(top)")
+        XCTAssertTrue(top.contains("記者が汽車で帰社した"), "\(top) / zenzStatus: \(engine.zenzStatus)")
     }
 
     /// 確定のあとに次の語が出るか（中身は辞書しだいなので、出たことと選べることだけ見る）。
@@ -76,6 +77,35 @@ final class FlickKeyTests: XCTestCase {
         }
         engine.flick(key("あ"), .tap)
         XCTAssertTrue(engine.predictions.isEmpty)
+    }
+
+    func testTypoNeighbors() {
+        let n = TypoVariants.neighbors(of: "う")
+        XCTAssertTrue(n.contains("え") && n.contains("あ"))  // 同じキーの別の方向
+        XCTAssertTrue(n.contains("く") && n.contains("つ"))  // 右のキー（か）・下のキー（た）の同じ方向
+        XCTAssertFalse(n.contains("う"))
+    }
+
+    /// 「ありがとえ」と打つと「ありがとう」を勧め、正しく打ったときは勧めない。
+    func testTypoSuggestion() {
+        type("ありがとえ")
+        engine.checkTypos()
+        XCTAssertEqual(engine.suggestion?.reading, "ありがとう", "\(String(describing: engine.suggestion?.candidate.text))")
+        if let s = engine.suggestion, s.obvious {
+            // 明らかな誤字なら、変換キー 1 回で直した候補が選ばれる
+            XCTAssertEqual(engine.candidates.first?.text, s.candidate.text)
+            engine.space()
+            XCTAssertEqual(out.marked, s.candidate.text)
+            engine.backspace()  // 選択を外すと勧めも消えるので、もう一度確かめる
+            engine.checkTypos()
+        }
+        engine.chooseSuggestion()
+        XCTAssertFalse(engine.isComposing)
+        XCTAssertFalse(out.text.isEmpty)
+        tick()
+        type("ありがとう")
+        engine.checkTypos()
+        XCTAssertNil(engine.suggestion)
     }
 
     func testDirection() {

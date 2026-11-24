@@ -74,3 +74,48 @@ enum KanaModifier {
         return nil
     }
 }
+
+/// フリックの打ち間違いで起きやすい読みの入れ替え。「もしかして」の候補づくりに使う。
+enum TypoVariants {
+    /// 文字 → (行, 列, 方向)。12 キーのかなだけ。
+    private static let position: [Character: (Int, Int, Int)] = {
+        var m: [Character: (Int, Int, Int)] = [:]
+        for (r, row) in Layouts.kana.enumerated() {
+            for (c, key) in row.enumerated() {
+                guard let key else { continue }
+                for (d, s) in key.chars.enumerated() where s.count == 1 { m[Character(s)] = (r, c, d) }
+            }
+        }
+        return m
+    }()
+
+    /// ch の代わりに打たれていたかもしれない文字。同じキーの別の方向と、上下左右のキーの同じ方向。
+    static func neighbors(of ch: Character) -> [Character] {
+        guard let (r, c, d) = position[ch] else { return [] }
+        var out: [Character] = []
+        if let key = Layouts.kana[r][c] {
+            out += key.chars.enumerated().filter { $0.offset != d && $0.element.count == 1 }.map { Character($0.element) }
+        }
+        for (dr, dc) in [(-1, 0), (1, 0), (0, -1), (0, 1)] {
+            let (nr, nc) = (r + dr, c + dc)
+            guard Layouts.kana.indices.contains(nr), Layouts.kana[nr].indices.contains(nc),
+                  let key = Layouts.kana[nr][nc], let s = key.char(FlickDirection(rawValue: d)!), s.count == 1 else { continue }
+            out.append(Character(s))
+        }
+        return out.filter { $0.isLetter }  // 記号（、。など）は外す
+    }
+
+    /// 最後の last 文字のうち 1 文字を入れ替えた読み。
+    static func of(_ s: String, last: Int = 3) -> [String] {
+        let chars = Array(s)
+        var out: [String] = []
+        for i in max(0, chars.count - last)..<chars.count {
+            for n in neighbors(of: chars[i]) {
+                var v = chars
+                v[i] = n
+                out.append(String(v))
+            }
+        }
+        return out
+    }
+}

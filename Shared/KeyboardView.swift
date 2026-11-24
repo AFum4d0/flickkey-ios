@@ -57,8 +57,25 @@ struct CandidateBar: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 0) {
                     if engine.isComposing {
+                        if let s = engine.suggestion, !s.obvious {
+                            Button { engine.chooseSuggestion() } label: {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "wand.and.stars").font(.system(size: 13))
+                                    Text(s.candidate.text).font(.system(size: 18))
+                                }
+                                .foregroundStyle(Theme.accent)
+                                .padding(.horizontal, 10)
+                                .frame(height: Theme.barHeight - 8)
+                                .overlay(RoundedRectangle(cornerRadius: 8).stroke(Theme.accent, lineWidth: 1))
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.trailing, 4)
+                            .accessibilityLabel("もしかして \(s.candidate.text)")
+                            .accessibilityIdentifier("suggestion")
+                        }
                         ForEach(Array(engine.candidates.enumerated()), id: \.offset) { i, c in
-                            chip(c.text, selected: i == engine.selected, id: "candidate-\(i)") { engine.choose(c) }
+                            chip(c.text, selected: i == engine.selected, id: "candidate-\(i)",
+                                 corrected: i == 0 && engine.suggestion?.obvious == true) { engine.choose(c) }
                                 .id(i)
                         }
                     } else {
@@ -76,10 +93,14 @@ struct CandidateBar: View {
         .frame(height: Theme.barHeight)
     }
 
-    private func chip(_ text: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
+    private func chip(_ text: String, selected: Bool, id: String, corrected: Bool = false,
+                      action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(text)
-                .font(.system(size: 18))
+            HStack(spacing: 4) {
+                // 誤字を直した候補には印を付ける
+                if corrected { Image(systemName: "wand.and.stars").font(.system(size: 13)) }
+                Text(text).font(.system(size: 18))
+            }
                 .foregroundStyle(selected ? Color.white : Color.primary)
                 .padding(.horizontal, 12)
                 .frame(height: Theme.barHeight - 8)

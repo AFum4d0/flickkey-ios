@@ -35,6 +35,22 @@ final class InputEngine: ObservableObject {
     @Published private(set) var predictions: [PostCompositionPredictionCandidate] = []
     private var lastChosen: Candidate?
 
+    /// 「もしかして」：フリックの打ち間違いを直した読みで、はっきり良い変換が見つかったときに出す。
+    struct TypoSuggestion {
+        let reading: String
+        let candidate: Candidate
+        /// 明らかな誤字。直した変換を候補の 1 番目に入れ、変換キー 1 回で選べるようにする。
+        let obvious: Bool
+    }
+    @Published private(set) var suggestion: TypoSuggestion?
+    /// 打つ手が止まってから確かめるまでの時間。テストでは自動で確かめず checkTypos() を呼ぶ。
+    var typoCheckDelay: UInt64? = 350_000_000
+    /// 打ち間違いを直した読みの変換が、元の読みよりこれだけ（対数の出やすさで）良ければ出す。
+    var typoMargin: Float = 3
+    /// これ以上良ければ明らかな誤字とみなす。
+    var obviousTypoMargin: Float = 8
+    private var typoTask: Task<Void, Never>?
+
     /// Zenzai の重み（zenz-v3.2-xsmall）がキーボード拡張に入っていれば使う。
     static let zenzWeight: URL? = {
         let url = InputEngine.resources.appendingPathComponent("zenz.gguf")
@@ -83,6 +99,8 @@ final class InputEngine: ObservableObject {
     }()
 
     var isComposing: Bool { !text.isEmpty }
+    /// Zenzai のモデルを読み込めたか（読めないと黙って辞書だけの変換になる）。
+    var zenzStatus: String { converter.zenzStatus }
 
     /// 毎回の変換に使う設定。Zenzai にはカーソルより前の 20 文字を文脈として渡す。
     private var options: ConvertRequestOptions {
@@ -216,6 +234,53 @@ final class InputEngine: ObservableObject {
         predictions = []
     }
 
+    func chooseSuggestion() {
+        guard let s = suggestion else { return }
+        toggleKey = nil
+        selected = nil
+        output?.commit(s.candidate.text)
+        text = ComposingText()
+        render()
+    }
+
+    private func scheduleTypoCheck() {
+        typoTask?.cancel()
+        suggestion = nil
+        guard let delay = typoCheckDelay, isComposing, selected == nil else { return }
+        typoTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: delay)
+            guard !Task.isCancelled else { return }
+            self?.checkTypos()
+        }
+    }
+
+    /// 最後の 3 文字のどれか 1 つを打ち間違えた場合の読みを試す。
+    /// ponytail: 1 回で最大 24 通り変換する。実機で重ければ数を減らすか裏のスレッドへ。
+    func checkTypos() {
+        suggestion = nil
+        let reading = text.convertTarget
+        guard reading.count >= 3, selected == nil, text.isAtEndIndex else { return }
+        var o = baseOptions
+        o.requireJapanesePrediction = false  // 予測を混ぜず、読み全体の変換どうしで比べる
+        func best(_ r: String) -> Candidate? {
+            var t = ComposingText()
+            t.insertAtCursorPosition(r, inputStyle: .direct)
+            return converter.requestCandidates(t, options: o).mainResults.first
+        }
+        guard let base = best(reading) else { return }
+        var found: TypoSuggestion?
+        for v in TypoVariants.of(reading).prefix(24) {
+            guard let c = best(v), Float(c.value) > Float(base.value) + typoMargin else { continue }
+            if found == nil || Float(c.value) > Float(found!.candidate.value) {
+                found = TypoSuggestion(reading: v, candidate: c, obvious: Float(c.value) > Float(base.value) + obviousTypoMargin)
+            }
+        }
+        // 変換器は最後に変換した入力を覚えているので、元の入力に戻しておく
+        _ = converter.requestCandidates(text.prefixToCursorPosition(), options: options)
+        suggestion = found
+        if let found, found.obvious { candidates.insert(found.candidate, at: 0) }
+    }
+
     func switchMode() {
         predictions = []
         commitAll()
@@ -251,7 +316,7 @@ final class InputEngine: ObservableObject {
     }
 
     private func render() {
-        defer { composing = text.convertTarget }
+        defer { composing = text.convertTarget; scheduleTypoCheck() }
         guard isComposing else {
             candidates = []
             selected = nil
