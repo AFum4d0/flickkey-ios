@@ -1,4 +1,5 @@
 import XCTest
+import Engine
 @testable import FlickKey
 
 @MainActor
@@ -12,6 +13,7 @@ final class FlickKeyTests: XCTestCase {
         out = DemoOutput()
         engine.output = out
         engine.now = { [unowned self] in self.clock }
+        engine.useZenzai = false  // 辞書だけの変換で決まった結果を確かめる。Zenzai は testZenzai で見る
     }
 
     private func key(_ label: String, in rows: [[FlickKey?]] = Layouts.kana) -> FlickKey {
@@ -50,6 +52,30 @@ final class FlickKeyTests: XCTestCase {
             XCTAssertTrue(engine.candidates.prefix(10).contains { $0.text == word }, "\(kana) → \(engine.candidates.prefix(5).map(\.text))")
             engine.enter()
         }
+    }
+
+    /// Zenzai が読み込めて、文の流れで同音語を選び分けられるか。
+    func testZenzai() throws {
+        try XCTSkipIf(InputEngine.zenzWeight == nil, "zenz.gguf が入っていない")
+        engine.useZenzai = true
+        type("きしゃがきしゃできしゃした")
+        let top = engine.candidates.prefix(3).map(\.text)
+        print("zenzai:", top)
+        XCTAssertTrue(top.contains("記者が汽車で帰社した"), "\(top)")
+    }
+
+    /// 確定のあとに次の語が出るか（中身は辞書しだいなので、出たことと選べることだけ見る）。
+    func testPredictionAfterCommit() {
+        type("きょう")
+        let c = engine.candidates.first { $0.text == "今日" }!
+        engine.choose(c)
+        print("predictions:", engine.predictions.map(\.text))
+        if let p = engine.predictions.first {
+            engine.choosePrediction(p)
+            XCTAssertEqual(out.text, "今日" + p.text)
+        }
+        engine.flick(key("あ"), .tap)
+        XCTAssertTrue(engine.predictions.isEmpty)
     }
 
     func testDirection() {

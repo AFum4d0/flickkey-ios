@@ -39,6 +39,8 @@ final class DemoOutput: ObservableObject, TextOutput {
         cursor = min(max(cursor + offset, 0), chars.count)
     }
 
+    var contextBefore: String { String(chars[..<cursor]) }
+
     /// 前 + 入力中（下線） + 後。カーソルは縦線で見せる。
     var display: AttributedString {
         var before = AttributedString(String(chars[..<cursor]))

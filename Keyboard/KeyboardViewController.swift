@@ -67,4 +67,6 @@ final class KeyboardViewController: UIInputViewController, TextOutput {
     func deleteBackward() { textDocumentProxy.deleteBackward() }
 
     func moveCursor(by offset: Int) { textDocumentProxy.adjustTextPosition(byCharacterOffset: offset) }
+
+    var contextBefore: String { textDocumentProxy.documentContextBeforeInput ?? "" }
 }

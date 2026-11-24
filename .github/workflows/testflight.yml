@@ -20,6 +20,11 @@ jobs:
         run: |
           gh release download dictionary -p dictionary.tar.gz
           mkdir -p Resources && tar -xzf dictionary.tar.gz -C Resources && rm dictionary.tar.gz
+      - name: Download Zenzai weight
+        run: |
+          # zenz-v3.2-xsmall（CC BY-SA 4.0）。コミットとハッシュ値を固定する
+          curl -fsSL -o Resources/zenz.gguf             https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf/resolve/42cab8392a3727d1cf80932cf2275b7d523fbb9f/ggml-model-Q5_K_M.gguf
+          echo "00c64b3d318045a708d0cad5434faccab10f5481a49e6362864551fd0995fa58  Resources/zenz.gguf" | shasum -a 256 -c
       - name: Generate project
         run: brew install xcodegen && xcodegen generate
       - name: Archive and upload

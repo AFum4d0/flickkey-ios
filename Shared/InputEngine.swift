@@ -1,5 +1,5 @@
 import Foundation
-import KanaKanjiConverterModule
+import Engine
 
 /// 文字の出し先。キーボードでは textDocumentProxy、アプリの試し打ち画面では文字列。
 @MainActor
@@ -10,6 +10,8 @@ protocol TextOutput: AnyObject {
     func commit(_ text: String)
     func deleteBackward()
     func moveCursor(by offset: Int)
+    /// カーソルより前の文字。Zenzai に文脈として渡す。
+    var contextBefore: String { get }
 }
 
 enum KeyboardMode: CaseIterable {
@@ -29,6 +31,17 @@ final class InputEngine: ObservableObject {
     @Published private(set) var candidates: [Candidate] = []
     /// 空白（変換）キーで選んでいる候補。nil なら未変換。
     @Published private(set) var selected: Int?
+    /// 確定した直後に出す「次に来そうな語」。何か打つと消える。
+    @Published private(set) var predictions: [PostCompositionPredictionCandidate] = []
+    private var lastChosen: Candidate?
+
+    /// Zenzai の重み（zenz-v3.2-xsmall）がキーボード拡張に入っていれば使う。
+    static let zenzWeight: URL? = {
+        let url = InputEngine.resources.appendingPathComponent("zenz.gguf")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }()
+    /// テストで Zenzai を切るため。
+    var useZenzai = true
 
     weak var output: TextOutput?
     /// テストで時刻を差し替える。
@@ -46,7 +59,7 @@ final class InputEngine: ObservableObject {
         return main.pathExtension == "appex" ? main : main.appendingPathComponent("PlugIns/FlickKeyboard.appex")
     }()
     private let converter = KanaKanjiConverter(dictionaryURL: InputEngine.resources.appendingPathComponent("Dictionary"))
-    private let options: ConvertRequestOptions = {
+    private let baseOptions: ConvertRequestOptions = {
         let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory).appendingPathComponent("learning", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
@@ -71,9 +84,21 @@ final class InputEngine: ObservableObject {
 
     var isComposing: Bool { !text.isEmpty }
 
+    /// 毎回の変換に使う設定。Zenzai にはカーソルより前の 20 文字を文脈として渡す。
+    private var options: ConvertRequestOptions {
+        var o = baseOptions
+        if useZenzai, let weight = Self.zenzWeight {
+            // ponytail: 推論の回数（inferenceLimit）は実機の速さを測って決める。本人の打ち癖（personalization）は後で足す
+            o.zenzaiMode = .on(weight: weight, inferenceLimit: 5, personalizationMode: nil,
+                               versionDependentMode: .v3(.init(leftSideContext: output?.contextBefore, maxLeftSideContextLength: 20)))
+        }
+        return o
+    }
+
     // MARK: キー
 
     func flick(_ key: FlickKey, _ d: FlickDirection) {
+        predictions = []
         guard let s = key.char(d) else { return }
         if mode != .kana {
             insertDirect(s)
@@ -103,6 +128,7 @@ final class InputEngine: ObservableObject {
 
     /// 小゛゜：カーソル直前の 1 文字を か→が、は→ば→ぱ のように回す。
     func modify() {
+        predictions = []
         selected = nil
         toggleKey = nil
         guard let last = text.convertTargetBeforeCursor.last, let n = KanaModifier.next(last) else { return }
@@ -110,11 +136,13 @@ final class InputEngine: ObservableObject {
     }
 
     func letter(_ s: String) {
+        predictions = []
         insertDirect(shift ? s.uppercased() : s)
         shift = false
     }
 
     func space() {
+        predictions = []
         toggleKey = nil
         guard isComposing, !candidates.isEmpty else {
             insertDirect(" ")
@@ -125,6 +153,7 @@ final class InputEngine: ObservableObject {
     }
 
     func enter() {
+        predictions = []
         toggleKey = nil
         if isComposing {
             commitAll()
@@ -134,6 +163,7 @@ final class InputEngine: ObservableObject {
     }
 
     func backspace() {
+        predictions = []
         toggleKey = nil
         if selected != nil {
             selected = nil
@@ -147,6 +177,7 @@ final class InputEngine: ObservableObject {
     }
 
     func moveCursor(_ offset: Int) {
+        predictions = []
         toggleKey = nil
         if isComposing {
             selected = nil
@@ -168,9 +199,25 @@ final class InputEngine: ObservableObject {
             converter.commitUpdateLearningData()
         }
         render()
+        if text.isEmpty {
+            lastChosen = c
+            predictions = Array(converter.requestPostCompositionPredictionCandidates(leftSideCandidate: c, options: options).prefix(10))
+        }
+    }
+
+    /// 確定の直後に出した「次の語」を選ぶ。
+    func choosePrediction(_ p: PostCompositionPredictionCandidate) {
+        output?.commit(p.text)
+        if let c = lastChosen {
+            converter.updateLearningData(c, with: p)
+            converter.commitUpdateLearningData()
+        }
+        lastChosen = nil
+        predictions = []
     }
 
     func switchMode() {
+        predictions = []
         commitAll()
         mode = mode.next
         shift = false

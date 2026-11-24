@@ -56,19 +56,15 @@ struct CandidateBar: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 0) {
-                    ForEach(Array(engine.candidates.enumerated()), id: \.offset) { i, c in
-                        Button { engine.choose(c) } label: {
-                            Text(c.text)
-                                .font(.system(size: 18))
-                                .foregroundStyle(i == engine.selected ? Color.white : Color.primary)
-                                .padding(.horizontal, 12)
-                                .frame(height: Theme.barHeight - 8)
-                                .background(i == engine.selected ? Theme.accent : Color.clear,
-                                            in: RoundedRectangle(cornerRadius: 8))
+                    if engine.isComposing {
+                        ForEach(Array(engine.candidates.enumerated()), id: \.offset) { i, c in
+                            chip(c.text, selected: i == engine.selected, id: "candidate-\(i)") { engine.choose(c) }
+                                .id(i)
                         }
-                        .buttonStyle(.plain)
-                        .id(i)
-                        .accessibilityIdentifier("candidate-\(i)")
+                    } else {
+                        ForEach(Array(engine.predictions.enumerated()), id: \.offset) { i, p in
+                            chip(p.text, selected: false, id: "prediction-\(i)") { engine.choosePrediction(p) }
+                        }
                     }
                 }
                 .padding(.horizontal, 6)
@@ -78,6 +74,19 @@ struct CandidateBar: View {
             }
         }
         .frame(height: Theme.barHeight)
+    }
+
+    private func chip(_ text: String, selected: Bool, id: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(text)
+                .font(.system(size: 18))
+                .foregroundStyle(selected ? Color.white : Color.primary)
+                .padding(.horizontal, 12)
+                .frame(height: Theme.barHeight - 8)
+                .background(selected ? Theme.accent : Color.clear, in: RoundedRectangle(cornerRadius: 8))
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(id)
     }
 }
 
