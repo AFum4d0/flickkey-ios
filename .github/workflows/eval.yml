@@ -1,0 +1,66 @@
+# AJIMEE-Bench（200 問、CC BY-SA 3.0）で変換の正解率を測る。手動で動かす。
+name: eval
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  AZK_VERSION: v0.11.2
+  AJIMEE_SHA: 401666cd56d1a570c2021798b64b6da4396bfd45
+
+jobs:
+  eval:
+    runs-on: macos-15
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1
+        with:
+          xcode-version: latest-stable
+      - name: Build CLI with Zenzai
+        run: |
+          set -o pipefail
+          git clone -q --depth 1 --branch "$AZK_VERSION" --recurse-submodules --shallow-submodules \
+            https://github.com/azooKey/AzooKeyKanaKanjiConverter azk
+          cd azk && swift build -c release --traits Zenzai 2>&1 | tail -3
+      - name: Get benchmark and models
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl -fsSL -o ajimee.json "https://raw.githubusercontent.com/azooKey/AJIMEE-Bench/$AJIMEE_SHA/JWTD_v2/v1/evaluation_items.json"
+          python3 eval/ajimee_to_input.py ajimee.json input.json
+          curl -fsSL -o xsmall.gguf https://huggingface.co/Miwa-Keita/zenz-v3.2-xsmall-gguf/resolve/42cab8392a3727d1cf80932cf2275b7d523fbb9f/ggml-model-Q5_K_M.gguf
+          echo "00c64b3d318045a708d0cad5434faccab10f5481a49e6362864551fd0995fa58  xsmall.gguf" | shasum -a 256 -c
+          curl -fsSL -o small.gguf https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/ef3e66e3665fe6a19598e6578e9b88a994b647fd/ggml-model-Q5_K_M.gguf
+          echo "29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673  small.gguf" | shasum -a 256 -c
+          gh release download dictionary -p dictionary.tar.gz && mkdir ours && tar -xzf dictionary.tar.gz -C ours
+      - name: Evaluate
+        run: |
+          CLI=azk/.build/release/CliTool
+          DICT=azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage/Dictionary
+          echo "| 設定 | 1 位正解 | 3 位以内 | 1 位（文脈あり） | 1 位（文脈なし） |" > scores.md
+          echo "|---|---|---|---|---|" >> scores.md
+          $CLI evaluate input.json --output r1.json --config_n_best 10 > /dev/null
+          python3 eval/score.py "azooKey の元の辞書" r1.json
+          # 作り直した辞書に差し替えて作り直す（evaluate は組み込みの辞書を使う）
+          rm -rf "$DICT/louds" && cp -r ours/Dictionary/louds "$DICT/louds"
+          (cd azk && swift build -c release --traits Zenzai 2>&1 | tail -1)
+          $CLI evaluate input.json --output r2.json --config_n_best 10 > /dev/null
+          python3 eval/score.py "作り直した辞書" r2.json
+          $CLI evaluate input.json --output r3.json --config_n_best 10 --zenz "file://$PWD/xsmall.gguf" > /dev/null
+          python3 eval/score.py "作り直した辞書 + Zenzai xsmall" r3.json
+          $CLI evaluate input.json --output r4.json --config_n_best 10 --zenz "file://$PWD/small.gguf" > /dev/null
+          python3 eval/score.py "作り直した辞書 + Zenzai small" r4.json
+          cat scores.md >> "$GITHUB_STEP_SUMMARY"
+          cat scores.md
+      - uses: actions/upload-artifact@v4
+        with:
+          name: eval-results
+          path: |
+            r*.json
+            scores.md
