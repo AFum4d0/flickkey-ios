@@ -1,0 +1,73 @@
+# azooKey の辞書に mozc-ut の語を足して作り直し、Release「dictionary」に置く。手動で動かす。
+name: dictionary
+
+on:
+  workflow_dispatch:
+    inputs:
+      max:
+        description: 足す語数の上限（0 なら全部）
+        default: "0"
+
+permissions:
+  contents: write
+
+env:
+  AZK_VERSION: v0.11.2
+  UT: jawiki neologd sudachidict personal-names place-names edict2
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Clone converter
+        run: |
+          git clone -q --depth 1 --branch "$AZK_VERSION" --recurse-submodules --shallow-submodules \
+            https://github.com/azooKey/AzooKeyKanaKanjiConverter azk
+          cp dict/ExportCommand.swift azk/Sources/CliTool/Subcommands/DictCommands/
+          sed -i 's/private static let targetChars/static let targetChars/' azk/Sources/CliTool/Subcommands/DictCommands/BuildCommand.swift
+          sed -i 's/subcommands: \[Self.Read.self, Self.Build.self\]/subcommands: [Self.Read.self, Self.Build.self, Self.Export.self]/' azk/Sources/CliTool/Subcommands/DictCommands/DictCommand.swift
+          grep -q "Self.Export.self" azk/Sources/CliTool/Subcommands/DictCommands/DictCommand.swift
+      - name: Build CLI
+        run: swift --version && cd azk && swift build -c release 2>&1 | tail -20
+      - name: Export current dictionary
+        run: |
+          DICT=azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage/Dictionary
+          azk/.build/release/CliTool dict export -d "$DICT" --out work/export
+          du -sh "$DICT" "$DICT/louds"
+      - name: Download mozc-ut
+        run: |
+          mkdir -p work/ut
+          for r in $UT; do
+            curl -fsSL "https://raw.githubusercontent.com/utuhiro78/mozcdic-ut-$r/main/mozcdic-ut-$r.txt.bz2" | bunzip2 > "work/ut/$r.txt"
+            echo "$r $(wc -l < work/ut/$r.txt)"
+          done
+      - name: Merge
+        run: python3 dict/merge.py work/export work/ut work/worddict --max "${{ inputs.max }}"
+      - name: Build LOUDS
+        run: |
+          mkdir -p work/louds
+          azk/.build/release/CliTool dict build --work_dir work | tail -5
+          DICT=azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage/Dictionary
+          mkdir -p out && cp -r "$DICT" out/Dictionary && rm -rf out/Dictionary/louds && cp -r work/louds out/Dictionary/louds
+          cp -r azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_emoji_dictionary_storage/EmojiDictionary out/EmojiDictionary
+          du -sh out/Dictionary out/Dictionary/louds out/EmojiDictionary
+          echo "largest LOUDS index files (kept in memory while that shard is used):"
+          ls -lS out/Dictionary/louds/*.louds out/Dictionary/louds/*.loudschars2 | head -8 | awk '{print $5, $9}'
+      - name: Check conversion with the new dictionary
+        run: |
+          WORDS="とくがわいえやす びぶんほうていしき ふーりえへんかん みとこんどりあ きょうゆうけつごう こゆうち ぴたごらすのていり おだのぶなが きょうはいいてんきです"
+          for w in $WORDS; do echo "old $w: $(azk/.build/release/CliTool run "$w" -n 3 2>/dev/null | tail -3 | tr '\n' ' ')"; done
+          DICT=azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage/Dictionary
+          rm -rf "$DICT/louds" && cp -r out/Dictionary/louds "$DICT/louds"
+          (cd azk && swift build -c release 2>&1 | tail -2)
+          for w in $WORDS; do echo "new $w: $(azk/.build/release/CliTool run "$w" -n 3 2>/dev/null | tail -3 | tr '\n' ' ')"; done
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -C out -czf dictionary.tar.gz Dictionary EmojiDictionary
+          ls -lh dictionary.tar.gz
+          gh release view dictionary >/dev/null 2>&1 || gh release create dictionary --title "辞書" --notes "azooKey の辞書に mozc-ut を足したもの。dictionary ワークフローで作る。"
+          gh release upload dictionary dictionary.tar.gz --clobber
