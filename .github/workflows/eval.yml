@@ -57,7 +57,11 @@ jobs:
           (cd azk && swift build -c release --traits Zenzai 2>&1 | tail -1)
           run() {  # run <名前> <出力> <入力> [evaluate の引数...]
             local name=$1 out=$2 in=$3; shift 3
-            $CLI evaluate "$in" --output "$out" "$@" > /dev/null && python3 eval/score.py "$name" "$out"
+            local t0=$SECONDS
+            # 1 つの設定が落ちても、残りの設定は続ける
+            $CLI evaluate "$in" --output "$out" "$@" > /dev/null \
+              && python3 eval/score.py "$name（$((SECONDS - t0)) 秒）" "$out" \
+              || echo "| $name | 失敗 | | | |" >> scores.md
           }
           Z="file://$PWD"
           run "辞書だけ" r2.json input.json --config_n_best 10
