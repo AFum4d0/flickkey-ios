@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Engine
 
 /// 文字の出し先。キーボードでは textDocumentProxy、アプリの試し打ち画面では文字列。
@@ -27,6 +28,21 @@ enum KeyboardMode: CaseIterable {
 final class InputEngine: ObservableObject {
     @Published var mode: KeyboardMode = .kana
     @Published var shift = false
+    /// シフトの 2 度押しで大文字のまま固定する。
+    @Published private(set) var capsLock = false
+    private var shiftTime = Date.distantPast
+    private var spaceTime = Date.distantPast
+    /// 入力欄が文の頭を大文字にする設定なら true（キーボード側が入れる）。
+    var autoCapitalize = false
+    /// 入力欄に合わせた改行キーの名前（「検索」「送信」など）。nil なら改行の印。
+    @Published var returnLabel: String?
+    /// キーを押すたびに呼ぶ（打鍵音）。
+    var onKey: () -> Void = {}
+
+    enum Panel { case emoji, settings }
+    /// キーの代わりに出している画面。nil ならキー。
+    @Published private(set) var panel: Panel?
+    @Published private(set) var recentSymbols: [String] = UserDefaults.standard.stringArray(forKey: "recentSymbols") ?? []
     @Published private(set) var composing = ""
     @Published private(set) var candidates: [Candidate] = []
     /// 空白（変換）キーで選んでいる候補。nil なら未変換。
@@ -116,7 +132,7 @@ final class InputEngine: ObservableObject {
     // MARK: キー
 
     func flick(_ key: FlickKey, _ d: FlickDirection) {
-        predictions = []
+        keyDown()
         guard let s = key.char(d) else { return }
         if mode != .kana {
             insertDirect(s)
@@ -146,7 +162,7 @@ final class InputEngine: ObservableObject {
 
     /// 小゛゜：カーソル直前の 1 文字を か→が、は→ば→ぱ のように回す。
     func modify() {
-        predictions = []
+        keyDown()
         selected = nil
         toggleKey = nil
         guard let last = text.convertTargetBeforeCursor.last, let n = KanaModifier.next(last) else { return }
@@ -154,16 +170,51 @@ final class InputEngine: ObservableObject {
     }
 
     func letter(_ s: String) {
-        predictions = []
-        insertDirect(shift ? s.uppercased() : s)
+        keyDown()
+        insertDirect(shift || capsLock ? s.uppercased() : s)
         shift = false
+        updateAutoShift()
+    }
+
+    /// シフト：1 回で次の 1 文字だけ大文字、すぐにもう 1 回押すと大文字のまま固定（キャプスロック）。
+    func tapShift() {
+        keyDown()
+        if capsLock {
+            capsLock = false
+            shift = false
+        } else if shift, now().timeIntervalSince(shiftTime) < 0.4 {
+            capsLock = true
+            shift = false
+        } else {
+            shift.toggle()
+        }
+        shiftTime = now()
+    }
+
+    /// 文の頭なら次の 1 文字を大文字にする（英字のときだけ）。
+    func updateAutoShift() {
+        guard autoCapitalize, mode == .qwerty, !capsLock, let c = output?.contextBefore else { return }
+        let t = c.replacingOccurrences(of: " ", with: "")
+        shift = t.isEmpty || t.hasSuffix(".") || t.hasSuffix("!") || t.hasSuffix("?") || t.hasSuffix("
+")
     }
 
     func space() {
-        predictions = []
+        keyDown()
         toggleKey = nil
         guard isComposing, !candidates.isEmpty else {
-            insertDirect(" ")
+            // 英字で空白をすぐ 2 回押すと「. 」にする
+            let before = output?.contextBefore ?? ""
+            if mode == .qwerty, now().timeIntervalSince(spaceTime) < toggleInterval, before.hasSuffix(" "),
+               let c = before.dropLast().last, c.isLetter || c.isNumber {
+                output?.deleteBackward()
+                insertDirect(". ")
+                spaceTime = .distantPast
+            } else {
+                insertDirect(" ")
+                spaceTime = now()
+            }
+            updateAutoShift()
             return
         }
         selected = selected.map { ($0 + 1) % candidates.count } ?? 0
@@ -181,7 +232,7 @@ final class InputEngine: ObservableObject {
     }
 
     func backspace() {
-        predictions = []
+        keyDown()
         toggleKey = nil
         if selected != nil {
             selected = nil
@@ -191,11 +242,57 @@ final class InputEngine: ObservableObject {
             render()
         } else {
             output?.deleteBackward()
+            updateAutoShift()
         }
     }
 
+    /// 削除キーを左へなぞったときに消せる文字数（入力中ならカーソルより前の入力中の文字）。
+    var deletableCount: Int {
+        isComposing ? text.convertTargetCursorPosition : (output?.contextBefore.count ?? 0)
+    }
+
+    /// 削除キーを左へなぞって離したとき：カーソルの前を count 文字まとめて消す。
+    func deleteBackward(count: Int) {
+        keyDown()
+        toggleKey = nil
+        let n = min(count, deletableCount)
+        guard n > 0 else { return }
+        if isComposing {
+            selected = nil
+            text.deleteBackwardFromCursorPosition(count: n)
+            render()
+        } else {
+            for _ in 0..<n { output?.deleteBackward() }
+            updateAutoShift()
+        }
+    }
+
+    /// 絵文字・記号の一覧から 1 つ入れる。最近使ったものの先頭に置く。
+    func insertSymbol(_ s: String) {
+        keyDown()
+        insertDirect(s)
+        recentSymbols.removeAll { $0 == s }
+        recentSymbols.insert(s, at: 0)
+        recentSymbols = Array(recentSymbols.prefix(32))
+        UserDefaults.standard.set(recentSymbols, forKey: "recentSymbols")
+    }
+
+    /// 入力欄の種類に合わせて始めのモードを決める（数字の欄は 123、メール・URL は ABC）。
+    func start(keyboardType: UIKeyboardType?) {
+        commitAll()
+        panel = nil
+        switch keyboardType {
+        case .numberPad, .decimalPad, .phonePad, .numbersAndPunctuation, .asciiCapableNumberPad: mode = .number
+        case .emailAddress, .URL, .asciiCapable, .twitter: mode = .qwerty
+        default: mode = .kana
+        }
+        capsLock = false
+        shift = false
+        updateAutoShift()
+    }
+
     func moveCursor(_ offset: Int) {
-        predictions = []
+        keyDown()
         toggleKey = nil
         if isComposing {
             selected = nil
@@ -285,13 +382,29 @@ final class InputEngine: ObservableObject {
     }
 
     func switchMode() {
-        predictions = []
+        keyDown()
         commitAll()
+        panel = nil
         mode = mode.next
         shift = false
+        capsLock = false
+        updateAutoShift()
+    }
+
+    /// 絵文字や設定の画面を開く・閉じる。
+    func toggle(_ p: Panel) {
+        keyDown()
+        commitAll()
+        panel = panel == p ? nil : p
     }
 
     // MARK: 内部
+
+    /// キーを押すたびの共通の処理：「次の語」を消し、打鍵音を鳴らす。
+    private func keyDown() {
+        predictions = []
+        onKey()
+    }
 
     private func insertDirect(_ s: String) {
         commitAll()

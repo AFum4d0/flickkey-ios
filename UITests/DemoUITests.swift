@@ -27,6 +27,21 @@ final class DemoUITests: XCTestCase {
         app.buttons["mode"].tap()
         XCTAssertTrue(app.descendants(matching: .any)["key-1"].waitForExistence(timeout: 5))
         shot(app, "3-number")
+
+        // 何も打っていないときのボタンの列から、絵文字と設定を開く
+        app.buttons["tool-emoji"].tap()
+        let first = app.buttons["symbol-0"]
+        XCTAssertTrue(first.waitForExistence(timeout: 5))
+        shot(app, "4-emoji")
+        let before = (demo.value as? String) ?? ""
+        first.tap()
+        XCTAssertNotEqual(demo.value as? String, before)
+
+        app.buttons["tool-settings"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["setting-sound"].waitForExistence(timeout: 5))
+        shot(app, "5-settings")
+        app.buttons["panel-close"].tap()
+        XCTAssertTrue(app.descendants(matching: .any)["key-1"].waitForExistence(timeout: 5))
     }
 
     private func shot(_ app: XCUIApplication, _ name: String) {

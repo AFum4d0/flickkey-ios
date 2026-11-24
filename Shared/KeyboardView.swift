@@ -1,6 +1,7 @@
 import SwiftUI
 import UIKit
 
+@MainActor
 enum Theme {
     static let background = dynamic(0xE8EAED, 0x1E2023)
     static let key = dynamic(0xFFFFFF, 0x3B3E43)
@@ -11,7 +12,7 @@ enum Theme {
     /// キーの下の影。背景と同じ青みの灰色にする（真っ黒の影は浮いて見える）
     static let keyShadow = dynamic(0x8A929C, 0x000000)
 
-    static let keyHeight: CGFloat = 50
+    static var keyHeight: CGFloat { CGFloat(KeyboardSettings.shared.keySize.rawValue) }
     static let gap: CGFloat = 6
     static let barHeight: CGFloat = 42
     static var totalHeight: CGFloat { barHeight + keyHeight * 4 + gap * 5 }
@@ -30,17 +31,22 @@ struct KeyboardView: View {
     @ObservedObject var engine: InputEngine
     /// ホームボタンのある iPhone では地球儀キーが必要（needsInputModeSwitchKey）。
     var onGlobe: (() -> Void)?
+    @ObservedObject private var settings = KeyboardSettings.shared
 
     var body: some View {
         VStack(spacing: Theme.gap) {
             CandidateBar(engine: engine)
             Group {
-                switch engine.mode {
-                case .kana: TwelveKeyPad(engine: engine, rows: Layouts.kana, onGlobe: onGlobe)
-                case .number: TwelveKeyPad(engine: engine, rows: Layouts.number, onGlobe: onGlobe)
-                case .qwerty: QwertyPad(engine: engine, onGlobe: onGlobe)
+                switch (engine.panel, engine.mode) {
+                case (.emoji, _): EmojiPanel(engine: engine)
+                case (.settings, _): SettingsPanel(engine: engine)
+                case (nil, .kana): TwelveKeyPad(engine: engine, rows: Layouts.kana, onGlobe: onGlobe)
+                case (nil, .number): TwelveKeyPad(engine: engine, rows: Layouts.number, onGlobe: onGlobe)
+                case (nil, .qwerty): QwertyPad(engine: engine, onGlobe: onGlobe)
                 }
             }
+            .frame(height: Theme.keyHeight * 4 + Theme.gap * 3)
+            .id(settings.keySize)  // キーの高さを変えたら作り直す
             .padding(.horizontal, Theme.gap / 2)
         }
         .padding(.bottom, Theme.gap)
@@ -80,10 +86,14 @@ struct CandidateBar: View {
                                  corrected: i == 0 && engine.suggestion?.obvious == true) { engine.choose(c) }
                                 .id(i)
                         }
-                    } else {
+                    } else if !engine.predictions.isEmpty {
                         ForEach(Array(engine.predictions.enumerated()), id: \.offset) { i, p in
                             chip(p.text, selected: false, id: "prediction-\(i)") { engine.choosePrediction(p) }
                         }
+                    } else {
+                        // 何も打っていないときは Gboard と同じくボタンの列にする
+                        tool("face.smiling", label: "絵文字と記号", id: "tool-emoji", on: engine.panel == .emoji) { engine.toggle(.emoji) }
+                        tool("gearshape", label: "設定", id: "tool-settings", on: engine.panel == .settings) { engine.toggle(.settings) }
                     }
                 }
                 .padding(.horizontal, 6)
@@ -93,6 +103,19 @@ struct CandidateBar: View {
             }
         }
         .frame(height: Theme.barHeight)
+    }
+
+    private func tool(_ symbol: String, label: String, id: String, on: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: on ? symbol + ".fill" : symbol)
+                .font(.system(size: 19))
+                .foregroundStyle(on ? Theme.accent : Color.secondary)
+                .frame(width: 48, height: Theme.barHeight - 8)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+        .accessibilityIdentifier(id)
+        .accessibilityAddTraits(on ? .isSelected : [])
     }
 
     private func chip(_ text: String, selected: Bool, id: String, corrected: Bool = false,
@@ -161,7 +184,7 @@ struct TwelveKeyPad: View {
             .zIndex(1)
 
             VStack(spacing: Theme.gap) {
-                RepeatKey(symbol: "delete.left", label: "削除", id: "backspace") { engine.backspace() }
+                DeleteKey(engine: engine)
                 RepeatKey(symbol: "arrowtriangle.right.fill", label: "カーソルを右へ", id: "right") { engine.moveCursor(1) }
                 SpaceKey(engine: engine, title: engine.isComposing ? "変換" : "空白")
                 EnterKey(engine: engine)
@@ -178,6 +201,7 @@ struct FlickKeyView: View {
     @Binding var pressed: FlickKey?
     let action: (FlickDirection) -> Void
     @State private var direction: FlickDirection = .tap
+    private var threshold: CGFloat { CGFloat(KeyboardSettings.shared.flick.rawValue) }
 
     var body: some View {
         let active = pressed == key
@@ -201,10 +225,10 @@ struct FlickKeyView: View {
             DragGesture(minimumDistance: 0)
                 .onChanged {
                     pressed = key
-                    direction = .from(dx: $0.translation.width, dy: $0.translation.height)
+                    direction = .from(dx: $0.translation.width, dy: $0.translation.height, threshold: threshold)
                 }
                 .onEnded {
-                    action(.from(dx: $0.translation.width, dy: $0.translation.height))
+                    action(.from(dx: $0.translation.width, dy: $0.translation.height, threshold: threshold))
                     pressed = nil
                     direction = .tap
                 }
@@ -257,10 +281,11 @@ struct QwertyPad: View {
             row(Layouts.qwerty[0])
             row(Layouts.qwerty[1]).padding(.horizontal, 16)
             HStack(spacing: Theme.gap) {
-                FunctionKey(symbol: engine.shift ? "shift.fill" : "shift", label: "シフト", id: "shift") { engine.shift.toggle() }
+                FunctionKey(symbol: engine.capsLock ? "capslock.fill" : engine.shift ? "shift.fill" : "shift",
+                            label: engine.capsLock ? "キャプスロック" : "シフト", id: "shift") { engine.tapShift() }
                     .frame(width: 44)
                 row(Layouts.qwerty[2])
-                RepeatKey(symbol: "delete.left", label: "削除", id: "backspace") { engine.backspace() }
+                DeleteKey(engine: engine)
                     .frame(width: 44)
             }
             HStack(spacing: Theme.gap) {
@@ -277,7 +302,7 @@ struct QwertyPad: View {
 
     private func row(_ letters: [String]) -> some View {
         HStack(spacing: 4) {
-            ForEach(letters, id: \.self) { LetterKey(text: engine.shift ? $0.uppercased() : $0, engine: engine) }
+            ForEach(letters, id: \.self) { LetterKey(text: engine.shift || engine.capsLock ? $0.uppercased() : $0, engine: engine) }
         }
     }
 }
@@ -429,10 +454,11 @@ struct EnterKey: View {
 
     var body: some View {
         Button { engine.enter() } label: {
-            KeyFace(symbol: engine.isComposing ? nil : "return", text: "確定", fill: Theme.accent, foreground: .white)
+            KeyFace(symbol: engine.isComposing || engine.returnLabel != nil ? nil : "return",
+                    text: engine.isComposing ? "確定" : engine.returnLabel, fill: Theme.accent, foreground: .white)
         }
         .buttonStyle(PressStyle())
-        .accessibilityLabel(engine.isComposing ? "確定" : "改行")
+        .accessibilityLabel(engine.isComposing ? "確定" : engine.returnLabel ?? "改行")
         .accessibilityIdentifier("enter")
     }
 }

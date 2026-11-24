@@ -9,6 +9,7 @@ final class FlickKeyTests: XCTestCase {
     private var clock = Date(timeIntervalSince1970: 0)
 
     override func setUp() async throws {
+        UserDefaults.standard.removeObject(forKey: "recentSymbols")
         engine = InputEngine()
         out = DemoOutput()
         engine.output = out
@@ -60,6 +61,10 @@ final class FlickKeyTests: XCTestCase {
         try XCTSkipIf(InputEngine.zenzWeight == nil, "zenz.gguf が入っていない")
         engine.useZenzai = true
         type("きしゃがきしゃできしゃした")
+        #if targetEnvironment(simulator)
+        // CI のシミュレーターではモデルを読み込めない（macOS 上の評価 eval.yml では読めている）
+        try XCTSkipIf(engine.zenzStatus.contains("could not load"), engine.zenzStatus)
+        #endif
         let top = engine.candidates.prefix(3).map(\.text)
         print("zenzai:", top)
         XCTAssertTrue(top.contains("記者が汽車で帰社した"), "\(top) / zenzStatus: \(engine.zenzStatus)")
@@ -196,6 +201,64 @@ final class FlickKeyTests: XCTestCase {
         engine.flick(key("5", in: Layouts.number), .up)
         XCTAssertEqual(out.text, "1×")
         XCTAssertFalse(engine.isComposing)
+    }
+
+    /// シフトの 2 度押しで大文字が続き、もう 1 回で戻る。
+    func testCapsLock() {
+        engine.switchMode()
+        engine.tapShift(); engine.tapShift()
+        XCTAssertTrue(engine.capsLock)
+        engine.letter("a"); engine.letter("b")
+        engine.tapShift()
+        XCTAssertFalse(engine.capsLock)
+        engine.letter("c")
+        XCTAssertEqual(out.text, "ABc")
+    }
+
+    /// 文の頭は自動で大文字、空白 2 回で「. 」。
+    func testAutoCapitalizeAndDoubleSpace() {
+        engine.autoCapitalize = true
+        engine.switchMode()
+        XCTAssertTrue(engine.shift)
+        engine.letter("h"); engine.letter("i")
+        engine.space(); engine.space()
+        XCTAssertEqual(out.text, "Hi. ")
+        XCTAssertTrue(engine.shift)
+        engine.letter("o")
+        tick(); engine.space(); tick(); engine.space()  // 間をあけた空白は「. 」にしない
+        XCTAssertEqual(out.text, "Hi. O  ")
+    }
+
+    /// 削除キーを左へなぞった分だけ、入力中の文字も確定した文字も消せる（あるより多くは消さない）。
+    func testSwipeDelete() {
+        type("あいう")
+        engine.deleteBackward(count: 2)
+        XCTAssertEqual(engine.composing, "あ")
+        engine.enter()
+        XCTAssertEqual(engine.deletableCount, 1)
+        engine.deleteBackward(count: 5)
+        XCTAssertEqual(out.text, "")
+    }
+
+    func testFieldType() {
+        engine.start(keyboardType: .numberPad)
+        XCTAssertEqual(engine.mode, .number)
+        engine.start(keyboardType: .emailAddress)
+        XCTAssertEqual(engine.mode, .qwerty)
+        engine.start(keyboardType: .default)
+        XCTAssertEqual(engine.mode, .kana)
+    }
+
+    func testRecentSymbols() {
+        engine.insertSymbol("😀"); engine.insertSymbol("★"); engine.insertSymbol("😀")
+        XCTAssertEqual(out.text, "😀★😀")
+        XCTAssertEqual(engine.recentSymbols, ["😀", "★"])
+        XCTAssertEqual(InputEngine().recentSymbols, ["😀", "★"])  // 次に開いたときも残る
+    }
+
+    func testEmojiTabsLoaded() {
+        XCTAssertGreaterThanOrEqual(Symbols.emojiTabs.count, 8, "emoji_genre が読めていない")
+        XCTAssertTrue(Symbols.emojiTabs[0].items.contains("😀"))
     }
 
     func testShiftIsOneShot() {
