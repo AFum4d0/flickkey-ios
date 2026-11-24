@@ -258,7 +258,7 @@ final class FlickKeyTests: XCTestCase {
 
     func testEmojiTabsLoaded() {
         XCTAssertGreaterThanOrEqual(Symbols.emojiTabs.count, 8, "emoji_genre が読めていない")
-        XCTAssertTrue(Symbols.emojiTabs[0].items.contains("😀"))
+        XCTAssertTrue(Symbols.emojiTabs[0].items.contains { $0.replacingOccurrences(of: "\u{FE0F}", with: "") == "😀" })
     }
 
     func testShiftIsOneShot() {

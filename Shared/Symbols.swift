@@ -24,7 +24,10 @@ enum Symbols {
         for line in s.split(separator: "\n") {
             let parts = line.split(separator: "\t", maxSplits: 1)
             guard parts.count == 2 else { continue }
-            byName[String(parts[0])] = parts[1].split(separator: ",").map(String.init)
+            // E16.0 では全部の絵文字に U+FE0F（絵文字として出す印）が付き、2 つ重なっているものもある
+            byName[String(parts[0])] = parts[1].split(separator: ",").map {
+                String($0).replacingOccurrences(of: "\u{FE0F}\u{FE0F}", with: "\u{FE0F}")
+            }
         }
         return ["Smileys & People", "Animals & Nature", "Food & Drink", "Activities", "Travel & Places", "Objects", "Symbols", "Flags"]
             .compactMap { name in byName[name].map { SymbolTab(id: name, icon: icons[name]!, items: $0) } }
