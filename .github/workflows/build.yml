@@ -2,7 +2,7 @@ name: build
 
 on:
   push:
-    paths-ignore: ["dict/**", ".github/workflows/dictionary.yml", "README.md"]
+    paths-ignore: ["dict/**", "eval/**", ".github/workflows/dictionary.yml", ".github/workflows/lm.yml", ".github/workflows/eval.yml", "README.md"]
   workflow_dispatch:
 
 jobs:

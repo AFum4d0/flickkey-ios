@@ -53,9 +53,16 @@ jobs:
           cat chunks.txt
           mkdir -p wiki
           MIRROR=https://ftp.acc.umu.se/mirror/wikimedia.org/dumps/jawiki/latest
+          # 公式サーバーは同時 2 本までなので、1・2 本目は公式、3 本目以降はミラーから並行して取る
+          get() { curl -fsSL -A "flickkey-ios-build" --retry 5 --retry-all-errors -C - "$1/$2" -o "wiki/$2"; }
+          i=0
           while read -r f; do
-            curl -fsSL -A "flickkey-ios-build" --retry 5 --retry-all-errors -C - "$BASE/$f" -o "wiki/$f"               || curl -fsSL --retry 5 --retry-all-errors "$MIRROR/$f" -o "wiki/$f"
+            if [ $i -lt 2 ]; then (get "$BASE" "$f" || get "$MIRROR" "$f") &
+            else (get "$MIRROR" "$f" || get "$BASE" "$f") &
+            fi
+            i=$((i + 1))
           done < chunks.txt
+          wait
           du -sh wiki
       - name: Make corpus
         run: |
