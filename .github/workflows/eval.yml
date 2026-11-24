@@ -41,23 +41,33 @@ jobs:
           curl -fsSL -o small.gguf https://huggingface.co/Miwa-Keita/zenz-v3.2-small-gguf/resolve/ef3e66e3665fe6a19598e6578e9b88a994b647fd/ggml-model-Q5_K_M.gguf
           echo "29c223d4c23327b80fd13ebb5ab2555057a46317997d5da391584ffbef0db673  small.gguf" | shasum -a 256 -c
           gh release download dictionary -p dictionary.tar.gz && mkdir ours && tar -xzf dictionary.tar.gz -C ours
+          # 比べるための別の版（どちらも CC BY-SA 4.0）
+          curl -fsSL -o small31.gguf https://huggingface.co/Miwa-Keita/zenz-v3.1-small-gguf/resolve/ddf6e44b2e05ab7ea9a3e31559c5e7948761365c/ggml-model-Q5_K_M.gguf
+          echo "4de930c06bef8c263aa1aa40684af206db4ce1b96375b3b8ed0ea508e0b14f6c  small31.gguf" | shasum -a 256 -c
+          # アプリと同じく、前の文を後ろの 20 文字だけにした入力
+          python3 -c "import json; d=json.load(open('input.json')); [x.update(left_context=x['left_context'][-20:]) for x in d if x['left_context']]; json.dump(d, open('input20.json','w'), ensure_ascii=False)"
       - name: Evaluate
         run: |
           CLI=azk/.build/release/CliTool
           DICT=azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage/Dictionary
           echo "| 設定 | 1 位正解 | 3 位以内 | 1 位（文脈あり） | 1 位（文脈なし） |" > scores.md
           echo "|---|---|---|---|---|" >> scores.md
-          $CLI evaluate input.json --output r1.json --config_n_best 10 > /dev/null
-          python3 eval/score.py "azooKey の元の辞書" r1.json
           # 作り直した辞書に差し替えて作り直す（evaluate は組み込みの辞書を使う）
           rm -rf "$DICT/louds" && cp -r ours/Dictionary/louds "$DICT/louds"
           (cd azk && swift build -c release --traits Zenzai 2>&1 | tail -1)
-          $CLI evaluate input.json --output r2.json --config_n_best 10 > /dev/null
-          python3 eval/score.py "作り直した辞書" r2.json
-          $CLI evaluate input.json --output r3.json --config_n_best 10 --zenz "file://$PWD/xsmall.gguf" > /dev/null
-          python3 eval/score.py "作り直した辞書 + Zenzai xsmall" r3.json
-          $CLI evaluate input.json --output r4.json --config_n_best 10 --zenz "file://$PWD/small.gguf" > /dev/null
-          python3 eval/score.py "作り直した辞書 + Zenzai small" r4.json
+          run() {  # run <名前> <出力> <入力> [evaluate の引数...]
+            local name=$1 out=$2 in=$3; shift 3
+            $CLI evaluate "$in" --output "$out" "$@" > /dev/null && python3 eval/score.py "$name" "$out"
+          }
+          Z="file://$PWD"
+          run "辞書だけ" r2.json input.json --config_n_best 10
+          run "xsmall・推論 5 回・文脈 20 字（今のアプリ）" r3.json input20.json --config_n_best 10 --zenz "$Z/xsmall.gguf" --config_zenzai_inference_limit 5
+          run "xsmall・制限なし" r3b.json input.json --config_n_best 10 --zenz "$Z/xsmall.gguf"
+          run "small・推論 5 回・文脈 20 字" r4a.json input20.json --config_n_best 10 --zenz "$Z/small.gguf" --config_zenzai_inference_limit 5
+          run "small・推論 20 回" r4b.json input.json --config_n_best 10 --zenz "$Z/small.gguf" --config_zenzai_inference_limit 20
+          run "small・制限なし" r4.json input.json --config_n_best 10 --zenz "$Z/small.gguf"
+          run "small・制限なし・N_best 30" r4c.json input.json --config_n_best 30 --zenz "$Z/small.gguf"
+          run "v3.1 small・制限なし" r5.json input.json --config_n_best 10 --zenz "$Z/small31.gguf"
           cat scores.md >> "$GITHUB_STEP_SUMMARY"
           cat scores.md
       - uses: actions/upload-artifact@v4
