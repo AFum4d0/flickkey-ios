@@ -14,6 +14,12 @@ jobs:
       - uses: maxim-lobanov/setup-xcode@v1
         with:
           xcode-version: latest-stable
+      - name: Download dictionary
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download dictionary -p dictionary.tar.gz
+          mkdir -p Resources && tar -xzf dictionary.tar.gz -C Resources && rm dictionary.tar.gz
       - name: Generate project
         run: brew install xcodegen && xcodegen generate
       - name: Archive and upload

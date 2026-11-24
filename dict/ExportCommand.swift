@@ -22,7 +22,10 @@ extension Subcommands.Dict {
             let state = store.prepareState()
             var total = 0
             for target in Build.targetChars {
-                guard let louds = LOUDS.load(target, dictionaryURL: dictionaryURL) else { continue }
+                guard let louds = LOUDS.load(Self.escaped(target), dictionaryURL: dictionaryURL) else {
+                    print("no louds for \(target)")
+                    continue
+                }
                 let indices = louds.prefixNodeIndices(chars: [], maxDepth: .max, maxCount: .max)
                 let entries = store.getDicdataFromLoudstxt3(identifier: target, indices: indices, state: state)
                 let lines = entries.map { "\($0.ruby)\t\($0.word)\t\($0.lcid)\t\($0.rcid)\t\($0.mid)\t\($0.value())" }
@@ -31,6 +34,11 @@ extension Subcommands.Dict {
                 total += entries.count
             }
             print("exported \(total) entries")
+        }
+
+        /// DictionaryBuilder.escapedIdentifier と同じ（あちらは internal なので写した）。「カ」→「[30AB]」
+        static func escaped(_ s: String) -> String {
+            "[" + s.utf16.map { String(format: "%04X", $0) }.joined(separator: "_") + "]"
         }
     }
 }

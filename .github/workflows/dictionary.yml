@@ -13,7 +13,6 @@ permissions:
 
 env:
   AZK_VERSION: v0.11.2
-  UT: jawiki neologd sudachidict personal-names place-names edict2
 
 jobs:
   build:
@@ -39,10 +38,11 @@ jobs:
       - name: Download mozc-ut
         run: |
           mkdir -p work/ut
-          for r in $UT; do
-            curl -fsSL "https://raw.githubusercontent.com/utuhiro78/mozcdic-ut-$r/main/mozcdic-ut-$r.txt.bz2" | bunzip2 > "work/ut/$r.txt"
+          # 中身が変わらないようコミットを固定する（dict/ut-pins.txt、名前=コミット）
+          while IFS== read -r r sha; do
+            curl -fsSL "https://raw.githubusercontent.com/utuhiro78/mozcdic-ut-$r/$sha/mozcdic-ut-$r.txt.bz2" | bunzip2 > "work/ut/$r.txt"
             echo "$r $(wc -l < work/ut/$r.txt)"
-          done
+          done < dict/ut-pins.txt
       - name: Merge
         run: python3 dict/merge.py work/export work/ut work/worddict --max "${{ inputs.max }}"
       - name: Build LOUDS

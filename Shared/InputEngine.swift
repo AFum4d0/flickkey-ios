@@ -1,5 +1,5 @@
 import Foundation
-import KanaKanjiConverterModuleWithDefaultDictionary
+import KanaKanjiConverterModule
 
 /// 文字の出し先。キーボードでは textDocumentProxy、アプリの試し打ち画面では文字列。
 @MainActor
@@ -40,7 +40,12 @@ final class InputEngine: ObservableObject {
     private var toggleKey: FlickKey?
     private var toggleIndex = 0
     private var toggleTime = Date.distantPast
-    private let converter = KanaKanjiConverter.withDefaultDictionary()
+    /// 辞書はキーボード拡張の中にだけ入れ、アプリからも拡張の中を読む（2 重に持たない）。
+    static let resources: URL = {
+        let main = Bundle.main.bundleURL
+        return main.pathExtension == "appex" ? main : main.appendingPathComponent("PlugIns/FlickKeyboard.appex")
+    }()
+    private let converter = KanaKanjiConverter(dictionaryURL: InputEngine.resources.appendingPathComponent("Dictionary"))
     private let options: ConvertRequestOptions = {
         let dir = (FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory).appendingPathComponent("learning", isDirectory: true)
@@ -53,7 +58,12 @@ final class InputEngine: ObservableObject {
             learningType: .inputAndOutput,
             memoryDirectoryURL: dir,
             sharedContainerURL: dir,
-            textReplacer: .withDefaultEmojiDictionary(),
+            textReplacer: TextReplacer {
+                let dir = InputEngine.resources.appendingPathComponent("EmojiDictionary")
+                if #available(iOS 18.4, *) { return dir.appendingPathComponent("emoji_all_E16.0.txt") }
+                if #available(iOS 17.4, *) { return dir.appendingPathComponent("emoji_all_E15.1.txt") }
+                return dir.appendingPathComponent("emoji_all_E15.0.txt")
+            },
             specialCandidateProviders: KanaKanjiConverter.defaultSpecialCandidateProviders,
             metadata: .init(versionString: "FlickKey 0.1")
         )

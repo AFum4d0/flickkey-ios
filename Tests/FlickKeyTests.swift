@@ -20,6 +20,38 @@ final class FlickKeyTests: XCTestCase {
 
     private func tick(_ s: TimeInterval = 2) { clock += s }
 
+    /// ひらがなを 12 キーで打つ。濁点・小文字は 小゛゜ を押して作る。
+    private func type(_ s: String) {
+        let keys = Layouts.kana.joined().compactMap { $0 }
+        for ch in s {
+            var target = String(ch), presses = 0
+            while !keys.contains(where: { $0.chars.contains(target) }) {
+                // 小゛゜ を何回押すと ch になるか（か→が なら 1 回）を逆にたどる
+                let base = keys.flatMap(\.chars).first { b in
+                    var c = Character(b); var n = 0
+                    while let next = KanaModifier.next(c), n < 3 { c = next; n += 1; if c == ch { presses = n; return true } }
+                    return false
+                }
+                target = base!
+            }
+            let key = keys.first { $0.chars.contains(target) }!
+            tick()
+            engine.flick(key, FlickDirection(rawValue: key.chars.firstIndex(of: target)!)!)
+            for _ in 0..<presses { engine.modify() }
+        }
+        XCTAssertEqual(engine.composing.hasSuffix(s), true)
+    }
+
+    /// 足した辞書（mozc-ut）の語が出るか。
+    func testTechnicalTerms() {
+        for (kana, word) in [("びぶんほうていしき", "微分方程式"), ("みとこんどりあ", "ミトコンドリア"),
+                             ("ふーりえへんかん", "フーリエ変換"), ("とくがわいえやす", "徳川家康")] {
+            type(kana)
+            XCTAssertTrue(engine.candidates.prefix(10).contains { $0.text == word }, "\(kana) → \(engine.candidates.prefix(5).map(\.text))")
+            engine.enter()
+        }
+    }
+
     func testDirection() {
         XCTAssertEqual(FlickDirection.from(dx: 3, dy: -4), .tap)
         XCTAssertEqual(FlickDirection.from(dx: -40, dy: 5), .left)
