@@ -1,0 +1,78 @@
+# Wikipedia の本文から Zenzai と組み合わせる n-gram を作り、Release「lm」に置く。手動で動かす。
+# n-gram の学習は Zenzai トレイトを入れたときだけ組み込まれ、Linux では llama.cpp が揃わないので macOS で行う。
+name: lm
+
+on:
+  workflow_dispatch:
+    inputs:
+      chunks:
+        description: 使う Wikipedia の分割ファイルの数（1 つで約 10 万記事）
+        default: "2"
+      mb:
+        description: 学習に使う本文の上限（MB）
+        default: "80"
+      n:
+        description: n-gram の n
+        default: "5"
+
+permissions:
+  contents: write
+
+env:
+  AZK_VERSION: v0.11.2
+
+jobs:
+  train:
+    runs-on: macos-15
+    timeout-minutes: 300
+    steps:
+      - uses: actions/checkout@v4
+      - uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: latest-stable
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - name: Build CLI with Zenzai
+        run: |
+          git clone -q --depth 1 --branch "$AZK_VERSION" https://github.com/azooKey/AzooKeyKanaKanjiConverter azk
+          cd azk && swift build -c release --traits Zenzai 2>&1 | tail -5
+      - name: Download Wikipedia
+        run: |
+          set -o pipefail
+          BASE=https://dumps.wikimedia.org/jawiki/latest
+          curl -fsSL -A "flickkey-ios-build" -m 60 "$BASE/" -o index.html || {
+            BASE=https://ftp.acc.umu.se/mirror/wikimedia.org/dumps/jawiki/latest
+            curl -fsSL -m 60 "$BASE/" -o index.html
+          }
+          grep -oE 'jawiki-latest-pages-articles[0-9]+\.xml-p[0-9]+p[0-9]+\.bz2' index.html | sort -uV \
+            | head -n "${{ inputs.chunks }}" > chunks.txt
+          cat chunks.txt
+          mkdir -p wiki
+          while read -r f; do curl -fsSL -A "flickkey-ios-build" "$BASE/$f" -o "wiki/$f"; done < chunks.txt
+          du -sh wiki
+      - name: Make corpus
+        run: |
+          pip install -q wikiextractor==3.0.6
+          for f in wiki/*.bz2; do python -m wikiextractor.WikiExtractor "$f" -o - -q --no-templates; done \
+            | python dict/wiki_corpus.py corpus.txt "${{ inputs.mb }}"
+          wc -l corpus.txt; head -3 corpus.txt
+      - name: Train n-gram
+        run: |
+          mkdir -p lm
+          /usr/bin/time -l azk/.build/release/CliTool ngram train corpus.txt -o lm/ -n "${{ inputs.n }}" 2>&1 \
+            | grep -E "maximum resident|real|Error|error" || true
+          ls -lh lm
+      - name: Try it
+        run: |
+          for p in "微分方程式の" "徳川家康は" "今日はいい"; do
+            azk/.build/release/CliTool ngram inference lm/lm -p "$p" -n "${{ inputs.n }}" -l 8 | grep Generated
+          done
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tar -C lm -czf lm.tar.gz .
+          ls -lh lm.tar.gz
+          gh release view lm >/dev/null 2>&1 || gh release create lm --title "n-gram" --notes "Wikipedia（CC BY-SA）の本文から作った n-gram。lm ワークフローで作る。"
+          gh release upload lm lm.tar.gz --clobber
