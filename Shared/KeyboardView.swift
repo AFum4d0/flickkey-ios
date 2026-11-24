@@ -150,7 +150,7 @@ struct FlickKeyView: View {
     var body: some View {
         let active = pressed == key
         VStack(spacing: 0) {
-            Text(key.label).font(.system(size: 22))
+            Text(key.face).font(.system(size: key.face.count > 2 ? 17 : 22))
             if showHints {
                 Text(key.chars.dropFirst().joined()).font(.system(size: 10)).foregroundStyle(.secondary)
             }

@@ -15,10 +15,13 @@ enum FlickDirection: Int, CaseIterable {
 struct FlickKey: Hashable {
     let chars: [String]
     let toggle: [String]
+    /// キーに書く文字。省略時はタップで入る文字。
+    let face: String
 
-    init(_ chars: [String], toggle: [String]? = nil) {
+    init(_ chars: [String], toggle: [String]? = nil, face: String? = nil) {
         self.chars = chars
         self.toggle = toggle ?? chars
+        self.face = face ?? chars[0]
     }
 
     var label: String { chars[0] }
@@ -37,7 +40,7 @@ enum Layouts {
         [k("たちつてと"), k("なにぬねの"), k("はひふへほ")],
         [k("まみむめも"), FlickKey(["や", "（", "ゆ", "）", "よ"], toggle: ["や", "ゆ", "よ", "（", "）"]), k("らりるれろ")],
         [nil, FlickKey(["わ", "を", "ん", "ー", ""], toggle: ["わ", "を", "ん", "ー"]),
-         FlickKey(["、", "。", "？", "！", "…"], toggle: ["、", "。", "？", "！", "…"])],
+         FlickKey(["、", "。", "？", "！", "…"], toggle: ["、", "。", "？", "！", "…"], face: "、。?!")],
     ]
 
     static let number: [[FlickKey?]] = [
