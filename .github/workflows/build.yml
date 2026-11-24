@@ -41,4 +41,10 @@ jobs:
         run: |
           set -o pipefail
           xcodebuild build -project FlickKey.xcodeproj -scheme FlickKey -destination 'generic/platform=iOS' \
-            -clonedSourcePackagesDirPath SourcePackages CODE_SIGNING_ALLOWED=NO | xcbeautify --renderer github-actions
+            -clonedSourcePackagesDirPath SourcePackages -derivedDataPath build/dd CODE_SIGNING_ALLOWED=NO | xcbeautify --renderer github-actions
+      - name: Check dictionary is inside the keyboard extension
+        run: |
+          APP=build/dd/Build/Products/Debug-iphoneos/FlickKey.app
+          ls "$APP/PlugIns/FlickKeyboard.appex/"
+          du -sh "$APP" "$APP/PlugIns/FlickKeyboard.appex/"*.bundle
+          ls -d "$APP/PlugIns/FlickKeyboard.appex/"*DefaultDictionary*.bundle

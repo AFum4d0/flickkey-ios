@@ -87,7 +87,7 @@ struct TwelveKeyPad: View {
     @ObservedObject var engine: InputEngine
     let rows: [[FlickKey?]]
     var onGlobe: (() -> Void)?
-    @State private var pressed: FlickKey?
+    @State private var pressed: FlickKey? = nil
 
     var body: some View {
         GeometryReader { g in pad(unit: (g.size.width - Theme.gap * 4) / 5) }
@@ -326,7 +326,7 @@ struct RepeatKey: View {
     let label: String
     let id: String
     let action: () -> Void
-    @State private var task: Task<Void, Never>?
+    @State private var task: Task<Void, Never>? = nil
 
     var body: some View {
         KeyFace(symbol: symbol, fill: task == nil ? Theme.functionKey : Theme.pressed)

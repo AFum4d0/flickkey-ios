@@ -97,7 +97,7 @@ final class FlickKeyTests: XCTestCase {
         engine.switchMode(); engine.switchMode()
         XCTAssertEqual(engine.mode, .number)
         engine.flick(key("1", in: Layouts.number), .tap)
-        engine.flick(key("5", in: Layouts.number), .right)
+        engine.flick(key("5", in: Layouts.number), .up)
         XCTAssertEqual(out.text, "1×")
         XCTAssertFalse(engine.isComposing)
     }
