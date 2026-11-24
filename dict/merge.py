@@ -77,11 +77,13 @@ def main() -> None:
                 e[2] = cid
 
     # 値は対数の出やすさ（大きいほど出やすい）。既存の固有名詞の真ん中より少し下に置き、
-    # 載っている辞書が多いほど・cost が小さいほど上げる。
-    def score(sources: int, cost: int) -> float:
-        return base - 1.5 - min(max(cost - 8000, 0), 1000) / 1000 * 2.0 + 0.5 * (sources - 1)
+    # 載っている辞書が多いほど・cost が小さいほど上げる。読みが短い語は普通の文の変換に
+    # 割り込みやすい（「ていしき」→鄭士琦）ので下げる。
+    def score(ruby: str, sources: int, cost: int) -> float:
+        return (base - 1.5 - min(max(cost - 8000, 0), 1000) / 1000 * 2.0 + 0.5 * (sources - 1)
+                - max(0, 6 - len(ruby)) * 0.8)
 
-    items = sorted(new.items(), key=lambda kv: -score(kv[1][0], kv[1][1]))
+    items = sorted(new.items(), key=lambda kv: -score(kv[0][0], kv[1][0], kv[1][1]))
     if a.max:
         items = items[: a.max]
     print(f"new: {len(items)} entries (skipped {dict(skipped)})")
@@ -89,7 +91,7 @@ def main() -> None:
     a.out_dir.mkdir(parents=True, exist_ok=True)
     added = collections.defaultdict(list)
     for (ruby, word), (sources, cost, cid) in items:
-        added[ruby[0]].append(f"{ruby}\t{word}\t{cid}\t{cid}\t{MID}\t{score(sources, cost):.4f}")
+        added[ruby[0]].append(f"{ruby}\t{word}\t{cid}\t{cid}\t{MID}\t{score(ruby, sources, cost):.4f}")
     for key in set(existing) | set(added):
         lines = existing.get(key, []) + added.get(key, [])
         (a.out_dir / f"{key}.tsv").write_text("\n".join(lines) + "\n", encoding="utf-8")

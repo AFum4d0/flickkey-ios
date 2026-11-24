@@ -48,7 +48,9 @@ jobs:
       - name: Build LOUDS
         run: |
           mkdir -p work/louds
-          azk/.build/release/CliTool dict build --work_dir work | tail -5
+          # LOUDS を作ったあと出やすさの表（c/・mm）も作ろうとして失敗するが、表は元の辞書のものを使うので構わない
+          azk/.build/release/CliTool dict build --work_dir work > work/build.log 2>&1 || tail -3 work/build.log
+          test -f work/louds/charID.chid
           DICT=azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage/Dictionary
           mkdir -p out && cp -r "$DICT" out/Dictionary && rm -rf out/Dictionary/louds && cp -r work/louds out/Dictionary/louds
           cp -r azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_emoji_dictionary_storage/EmojiDictionary out/EmojiDictionary
@@ -57,7 +59,7 @@ jobs:
           ls -lS out/Dictionary/louds/*.louds out/Dictionary/louds/*.loudschars2 | head -8 | awk '{print $5, $9}'
       - name: Check conversion with the new dictionary
         run: |
-          WORDS="とくがわいえやす びぶんほうていしき ふーりえへんかん みとこんどりあ きょうゆうけつごう こゆうち ぴたごらすのていり おだのぶなが きょうはいいてんきです"
+          WORDS="とくがわいえやす びぶんほうていしき ていしき かんじ きしゃがきしゃできしゃした こうえんにいく ふーりえへんかん みとこんどりあ きょうゆうけつごう こゆうち ぴたごらすのていり おだのぶなが きょうはいいてんきです"
           for w in $WORDS; do echo "old $w: $(azk/.build/release/CliTool run "$w" -n 3 2>/dev/null | tail -3 | tr '\n' ' ')"; done
           DICT=azk/Sources/KanaKanjiConverterModuleWithDefaultDictionary/azooKey_dictionary_storage/Dictionary
           rm -rf "$DICT/louds" && cp -r out/Dictionary/louds "$DICT/louds"
