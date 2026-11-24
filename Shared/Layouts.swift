@@ -105,11 +105,11 @@ enum TypoVariants {
         return out.filter { $0.isLetter }  // 記号（、。など）は外す
     }
 
-    /// 最後の last 文字のうち 1 文字を入れ替えた読み。
-    static func of(_ s: String, last: Int = 3) -> [String] {
+    /// どこか 1 文字を入れ替えた読み。最後の文字から順に並べる（打ち間違いは最近打った所に多い）。
+    static func of(_ s: String) -> [String] {
         let chars = Array(s)
         var out: [String] = []
-        for i in max(0, chars.count - last)..<chars.count {
+        for i in chars.indices.reversed() {
             for n in neighbors(of: chars[i]) {
                 var v = chars
                 v[i] = n

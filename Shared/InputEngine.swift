@@ -250,16 +250,17 @@ final class InputEngine: ObservableObject {
         typoTask = Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: delay)
             guard !Task.isCancelled else { return }
-            self?.checkTypos()
+            await self?.checkTypos()
         }
     }
 
-    /// 最後の 3 文字のどれか 1 つを打ち間違えた場合の読みを試す。
-    /// ponytail: 1 回で最大 24 通り変換する。実機で重ければ数を減らすか裏のスレッドへ。
-    func checkTypos() {
+    /// どこか 1 文字を打ち間違えた場合の読みを、文字数の制限なしで全部試す。
+    /// 1 通りごとに手を離し（Task.yield）、次の文字が打たれたら打ち切るので、打つ手は待たされない。
+    /// ponytail: 1 文字あたり最大 8 通り変換する。実機で電池や熱が気になれば、裏の変換器に分ける。
+    func checkTypos() async {
         suggestion = nil
         let reading = text.convertTarget
-        guard reading.count >= 3, selected == nil, text.isAtEndIndex else { return }
+        guard !reading.isEmpty, selected == nil, text.isAtEndIndex else { return }
         var o = baseOptions
         o.requireJapanesePrediction = false  // 予測を混ぜず、読み全体の変換どうしで比べる
         func best(_ r: String) -> Candidate? {
@@ -269,7 +270,9 @@ final class InputEngine: ObservableObject {
         }
         guard let base = best(reading) else { return }
         var found: TypoSuggestion?
-        for v in TypoVariants.of(reading).prefix(24) {
+        for v in TypoVariants.of(reading) {
+            await Task.yield()
+            guard !Task.isCancelled, text.convertTarget == reading else { return }
             guard let c = best(v), Float(c.value) > Float(base.value) + typoMargin else { continue }
             if found == nil || Float(c.value) > Float(found!.candidate.value) {
                 found = TypoSuggestion(reading: v, candidate: c, obvious: Float(c.value) > Float(base.value) + obviousTypoMargin)

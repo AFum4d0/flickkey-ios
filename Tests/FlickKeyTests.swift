@@ -87,9 +87,9 @@ final class FlickKeyTests: XCTestCase {
     }
 
     /// 「ありがとえ」と打つと「ありがとう」を勧め、正しく打ったときは勧めない。
-    func testTypoSuggestion() {
+    func testTypoSuggestion() async {
         type("ありがとえ")
-        engine.checkTypos()
+        await engine.checkTypos()
         XCTAssertEqual(engine.suggestion?.reading, "ありがとう", "\(String(describing: engine.suggestion?.candidate.text))")
         if let s = engine.suggestion, s.obvious {
             // 明らかな誤字なら、変換キー 1 回で直した候補が選ばれる
@@ -97,15 +97,23 @@ final class FlickKeyTests: XCTestCase {
             engine.space()
             XCTAssertEqual(out.marked, s.candidate.text)
             engine.backspace()  // 選択を外すと勧めも消えるので、もう一度確かめる
-            engine.checkTypos()
+            await engine.checkTypos()
         }
         engine.chooseSuggestion()
         XCTAssertFalse(engine.isComposing)
         XCTAssertFalse(out.text.isEmpty)
         tick()
         type("ありがとう")
-        engine.checkTypos()
+        await engine.checkTypos()
         XCTAssertNil(engine.suggestion)
+    }
+
+    /// 長い文の頭の方の打ち間違いも直せる（文字数の制限なし）。
+    func testTypoFarFromEnd() async {
+        engine.enter()
+        type("ありがとえございます")  // 5 文字目の う を え と打った
+        await engine.checkTypos()
+        XCTAssertEqual(engine.suggestion?.reading, "ありがとうございます", "\(String(describing: engine.suggestion?.candidate.text))")
     }
 
     func testDirection() {
