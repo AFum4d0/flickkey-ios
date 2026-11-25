@@ -364,7 +364,8 @@ final class InputEngine: ObservableObject {
             t.insertAtCursorPosition(r, inputStyle: .direct)
             return converter.requestCandidates(t, options: o).mainResults.first
         }
-        guard let base = best(reading) else { return }
+        // 読み全体が辞書の 1 語なら打ち間違いではない（「かん」に「くん」を勧めない）
+        guard let base = best(reading), base.data.count > 1 else { return }
         var found: TypoSuggestion?
         for v in TypoVariants.of(reading) {
             await Task.yield()

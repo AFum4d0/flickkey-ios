@@ -111,6 +111,11 @@ final class FlickKeyTests: XCTestCase {
         type("ありがとう")
         await engine.checkTypos()
         XCTAssertNil(engine.suggestion)
+        engine.enter()
+        tick()
+        type("かん")  // 正しい 1 語には勧めない
+        await engine.checkTypos()
+        XCTAssertNil(engine.suggestion, "\(String(describing: engine.suggestion?.candidate.text))")
     }
 
     /// 長い文の頭の方の打ち間違いも直せる（文字数の制限なし）。
