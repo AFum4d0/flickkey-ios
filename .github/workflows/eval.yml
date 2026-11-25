@@ -29,6 +29,11 @@ jobs:
             https://github.com/azooKey/AzooKeyKanaKanjiConverter azk
           # evaluate は Zenzai に v2 の形式で文脈を渡すが、使うモデル（zenz-v3.2）は v3 なので合わせる
           cd azk && sed -i '' 's/versionDependentMode: .v2(.init(leftSideContext:/versionDependentMode: .v3(.init(leftSideContext:/'             Sources/CliTool/Subcommands/EvaluateCommand.swift && grep -c ".v3(.init(leftSideContext:" Sources/CliTool/Subcommands/EvaluateCommand.swift
+          # evaluate は「読み全体に一致する候補だけ」（.完全一致）で変換させる。そのとき変換器は候補を辞書の点数順に
+          # 並べ直し、Zenzai が選んだ順番を捨ててしまう。アプリ（通常の変換）では Zenzai の順番が残るので、それに合わせる
+          KKC=$(find Sources -name KanaKanjiConverter.swift -path "*KanaKanjiConverterModule/*" | head -1)
+          perl -0pi -e 's/let merged = self\.getUniqueCandidate\(wholeSentenceUniqueCandidates\.chained\(userShortcutsCandidates\)\)\.sorted\(by: \{\$0\.value > \$1\.value\}\)/let merged = options.zenzaiMode.enabled ? self.getUniqueCandidate(wholeSentenceUniqueCandidates.chained(userShortcutsCandidates)) : self.getUniqueCandidate(wholeSentenceUniqueCandidates.chained(userShortcutsCandidates)).sorted(by: {\$0.value > \$1.value})/' "$KKC"
+          grep -q "options.zenzaiMode.enabled ? self.getUniqueCandidate" "$KKC"
           swift build -c release --traits Zenzai 2>&1 | tail -3
       - name: Get benchmark and models
         env:
@@ -66,12 +71,10 @@ jobs:
           Z="file://$PWD"
           run "辞書だけ" r2.json input.json --config_n_best 10
           run "xsmall・推論 5 回・文脈 20 字（今のアプリ）" r3.json input20.json --config_n_best 10 --zenz "$Z/xsmall.gguf" --config_zenzai_inference_limit 5
-          run "xsmall・制限なし" r3b.json input.json --config_n_best 10 --zenz "$Z/xsmall.gguf"
           run "small・推論 5 回・文脈 20 字" r4a.json input20.json --config_n_best 10 --zenz "$Z/small.gguf" --config_zenzai_inference_limit 5
-          run "small・推論 20 回" r4b.json input.json --config_n_best 10 --zenz "$Z/small.gguf" --config_zenzai_inference_limit 20
+          run "small・推論 10 回・文脈 40 字" r4b.json input.json --config_n_best 10 --zenz "$Z/small.gguf" --config_zenzai_inference_limit 10
           run "small・制限なし" r4.json input.json --config_n_best 10 --zenz "$Z/small.gguf"
-          run "small・制限なし・N_best 30" r4c.json input.json --config_n_best 30 --zenz "$Z/small.gguf"
-          run "v3.1 small・制限なし" r5.json input.json --config_n_best 10 --zenz "$Z/small31.gguf"
+          run "v3.1 small・推論 5 回・文脈 20 字" r5.json input20.json --config_n_best 10 --zenz "$Z/small31.gguf" --config_zenzai_inference_limit 5
           cat scores.md >> "$GITHUB_STEP_SUMMARY"
           cat scores.md
       - uses: actions/upload-artifact@v4
